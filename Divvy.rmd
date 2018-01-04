@@ -1,0 +1,440 @@
+---
+editor_options:
+  chunk_output_type: console
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup,include = F,echo = F}
+
+knitr::opts_chunk$set(message = F,warning = F,fig.width = 10,fig.align = "center")
+
+library(hrbrthemes);library(tidyverse)
+library(stringr);library(lubridate)
+library(zoo);library(scales)
+library(viridis);library(leaflet)
+library(mapview);library(DT)
+
+
+user <- Sys.info()[["user"]]
+new_wd <- sprintf("C:/Users/%s/Desktop/Divvy",user)
+setwd(new_wd)     
+options(scipen = 1000, stringsAsFactors = FALSE)
+
+#=============
+#Import Divvy data
+#=============
+
+source("Clean Script.R")
+
+```
+
+#Divvy Analysis
+
+Welcome to my inaugural Github post! After many months spent learning the basics of R, I finally feel comfortable posting some code. This space will, hopefully, contain my monthly data-dives, visualizations, modelling exercises, and general musings on data sets that I find interesting. I would appreciate any comments, constructive or otherwise. 
+
+With introductions out of the way, let's dive into our first data set, generously provided by Divvy, the Chicago bike-share program - you can find more information [here](https://www.divvybikes.com/system-data). For the purposes of this analysis, I examine the `r comma(n_distinct(trips$trip_id))` Divvy trips made in 2016. Here is what the tidied data frame looks like:
+
+```{r}
+
+DT::datatable(head(trips,5),rownames= F,options = list(dom = "t",scrollX = T))
+
+```
+<p>
+If you are interested in how the raw data was transformed into a usable format, this repository also includes the cleaning script.
+
+##Spatial
+###Trips by Station
+Before examining any other features, I want to map rides by station to get a sense of the spatial distribution of Divvy across Chicago. I am especially interested in whether some stations act exclusively as start or endpoints compared to others. The code chunk below first summarizes the data by originating station, and then maps the output using leaflet. Data for terminating stations was compiled in the exact same manner, just by switching "from to "to".
+
+```{r}
+
+#=============
+#From
+#=============
+
+#Dataframe
+trips_from <- trips %>%
+  group_by(from_station_id,from_station_name,
+           from_long,from_lat) %>% 
+  summarize(trips= n_distinct(trip_id))
+
+#Map
+pal <- colorNumeric("viridis",domain = trips_from$trips)
+  
+tooltip <- paste("<strong>Station:</strong>",
+                 trips_from$from_station_name,"<br>",
+                 "<strong>Trips Originating:</strong>",
+                 comma(trips_from$trips))
+
+map_from <- leaflet() %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addCircles(data = trips_from,lng = ~from_long,lat = ~from_lat,
+             stroke = F,fill = T,fillColor = ~pal(trips),
+             fillOpacity = 0.7,radius = ~(trips/100),
+             popup = tooltip) %>% 
+  addLegend(position = "bottomright",pal = pal,
+            values = trips_from$trips,
+            title = "Trips<br>Originating")
+
+```
+
+
+
+```{r,echo = F}
+
+#=============
+#To
+#=============
+
+#Dataframe
+trips_to <- trips %>%
+  group_by(to_station_id,to_station_name,
+           to_long,to_lat) %>% 
+  summarize(trips = n_distinct(trip_id))
+
+#Map
+pal <- colorNumeric("viridis",domain = trips_to$trips)
+  
+tooltip <- paste("<strong>Station:</strong>",
+                 trips_to$to_station_name,"<br>",
+                 "<strong>Trips Terminating:</strong>",
+                 comma(trips_to$trips))
+
+map_to <- leaflet() %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addCircles(data = trips_to,lng = ~to_long,lat = ~to_lat,
+             stroke = F,fill = T,fillColor = ~pal(trips),
+             fillOpacity=0.7,radius = ~(trips/100),
+             popup = tooltip) %>% 
+  addLegend(position = "bottomright",pal = pal,
+            values = trips_to$trips,
+            title = "Trips<br>Terminating")
+
+```
+<p>
+Once we have made the maps for both originating and terminating stations, we can plot them together like so:
+
+```{r}
+
+#Map together
+sync(map_from,map_to)
+
+```
+
+<!--Forgive me for I have sinned - the text below wrapped around the mapview sync no matter what HTML I used, expect for this manual hack to force output on to a new line--> 
+<font color="white">.<p>.<p>.<p>.<p>.<p>.<p>.<p>.<p>.
+<p>.<p>.<p>.<p>.<p>.</font> 
+
+A couple of things stand out immediately. First, regardless of how trips are tabulated, there is a clear core-periphery pattern. Most trips start or end in the Loop or River North, with Old Town and the West Loop close behind. Second, while Divvy volume is higher in the historically white, rich neighborhoods of the Near North Side, the bike-share network is laid out in a more (spatially) equitable fashion than my cold cynical heart presumed; of course, this only speaks to Divvy station allocation, and not the company's responsiveness to customers on the South Side, nor the presence of supporting infrastructure like protected bike lanes.
+
+Unfortunately, it is hard to discern differences in trip type volumes - starting versus ending - for a given station on these maps. For that, we have to take a closer look at those stations with the largest imbalances. 
+
+###Most Popular Terminal Stations
+
+The code chunk below grabs and plots the top 25 stations in terms of trip type disparity (i.e. way more trips leaving than arriving, or vice versa).
+
+```{r}
+
+#=============
+#Net
+#=============
+
+#Dataframe, 25 largest disparities
+trips_net <- trips_to %>%
+  ungroup() %>% 
+  select(to_station_id,"trips_end" = trips) %>% 
+  left_join(trips_from,.,
+            by = c("from_station_id" = "to_station_id")) %>%
+  mutate(trips = trips-trips_end) %>% 
+  select(-trips_end) %>% 
+  arrange(desc(abs(trips))) %>% 
+  head(25)
+
+#Map
+pal <- colorNumeric("RdYlGn",domain = trips_net$trips)
+  
+tooltip <- paste("<strong>Station:</strong>",
+                 trips_net$from_station_name,"<br>",
+                 "<strong>Trips<br>(Originating -<br>Terminating):</strong>",
+                 comma(trips_net$trips))
+
+map_net <- leaflet() %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addCircles(data = trips_net,lng = ~from_long,lat = ~from_lat,
+             stroke = T,weight = 1,color = "#0F0F0F",
+             radius = 100,fill = T,fillColor = ~pal(trips),
+             fillOpacity = 0.7,popup = tooltip) %>% 
+  addLegend(position = "bottomright",pal = pal,
+            values = trips_net$trips,
+            title = "Trips<br>(Originating -<br>Terminating)")
+
+```
+
+
+
+```{r,echo=F}
+
+#Map
+map_net
+
+```
+<p>
+The map above makes the differences between originating stations (in green) and terminating stations (in red) perfectly clear. Start points are clustered around the two big commuter rail stations: Ogilvie on Madison, and Millennium on Michigan. End points are scattered around River North, an employment center that, for those coming from the West Loop especially, might be just outside of walking range, and farther up the lakefront.
+
+From a personal perspective, it is comforting to see that my anecdotal observations are backed by the data; I made the ride from Ogilvie to Streeterville almost every day in the summer of 2014 for my internship at Northwestern Hospital, and I've biked to North Avenue beach or Wrigley Field more times than I can count.  
+
+##Temporal
+
+The next trend I want to look at is the seasonal variation of Divvy trips in 2016. We can use the code below to plot bike rides by day.
+
+```{r}
+
+#=============
+#Daily
+#=============
+
+#Dataframe
+daily <- trips %>%
+  select(start_time,trip_id) %>%
+  mutate(start_time = date(start_time)) %>% 
+  group_by(start_time) %>%
+  summarize(trips = n_distinct(trip_id))
+            
+#Plot
+plot_daily <- ggplot(daily,aes(start_time,trips)) +
+  geom_line(size = 1,color = "darkgrey",alpha = .7) +
+  geom_smooth() +
+  scale_y_comma(limits = c(0, NA)) +
+  labs(title = "Daily Trips",
+       x = "Date",y = "Trips",
+       caption = "Data: Divvy Bikes") +
+  theme_ipsum(base_size = 12,grid = "XY")
+
+```
+
+
+
+```{r,echo=F}
+
+plot_daily
+
+```
+
+Not exactly earth-shattering that Divvy volume rises in spring, peaks in summer, and tails off in the winter months, but hey, it's an excuse to use some lubridate functions. I am interested in how much of the Divvy volume holding steady in October can be attributed to the Cubs World Series run versus weather, etc., but we can revisit that at a later date.
+
+If you are curious about that massive spike in July, it's the
+`r daily %>% filter(trips==max(trips)) %>%  mutate(clean = paste0(mday(.$start_time),'th')) %>% pull(3)`. After a cursory search, it looks like it was a gorgeous summer Saturday, but no special events stood out to me - maybe you'll have better luck!
+
+Let's check out volume by day of the week next. The code for that is not all that different from the previous chunk:
+
+```{r}
+
+#=============
+#Weekday
+#=============
+
+#Dataframe
+weekday <- trips %>%
+  select(start_time,trip_id) %>%
+  mutate(start_time = wday(date(start_time),label = T)) %>% 
+  group_by(start_time) %>%
+  summarize(trips = n_distinct(trip_id)) %>% 
+  mutate(trips_perc = trips/sum(trips))
+            
+#Plot
+plot_weekday <- ggplot(weekday,aes(start_time,trips_perc)) +
+  geom_bar(stat = "identity",fill = "#75b8d1") +
+  scale_y_percent(limits = c(0, NA)) +
+  labs(title = "Trips by Day of Week",
+       x = "Day of Week",y = "Trips (%)",
+       caption = "Data: Divvy Bikes") +
+  theme_ipsum(base_size = 12,grid = "Y")
+
+```
+
+
+
+```{r,echo=F}
+
+plot_weekday
+
+```
+
+Prior to running these frequencies, I was torn on whether or not there would be a clear weekday/weekend divide. Commuters would definitely make use of Divvys throughout the week, but I thought the additional weekend volume by tourists might skew the distribution.
+
+It turns out that about the same amount of Divvy rides are completed each day of the week - not as fascinating as I thought it would be.
+
+##Users
+
+Building off of the last section, just how many rides did tourists account for compared to commuters? We can look at the breakdown between annual subscribers and one-time customers using the code below:
+
+```{r,echo = T}
+
+#=============
+#User Type
+#=============
+
+#Dataframe
+user_type <- trips %>%
+  filter(user_type!="Dependent") %>% 
+  select(user_type,trip_id) %>%
+  group_by(user_type) %>%
+  summarize(trips = n_distinct(trip_id)) %>% 
+  mutate(trips_perc = trips/sum(trips))
+            
+#Plot
+plot_user_type <- ggplot(user_type,aes(user_type,trips_perc)) +
+  geom_bar(stat = "identity",fill = "#75b8d1") +
+  scale_y_percent(limits = c(0, 1)) +
+  labs(title = "Trips by User Type",
+       x = "User Type",y = "Trips (%)",
+       caption = "Data: Divvy Bikes") +
+  theme_ipsum(base_size = 12,grid = "Y")
+
+```
+
+
+
+```{r,echo = F}
+
+plot_user_type
+
+```
+
+I am shocked that customers accounted for only about 25% of Divvy rides in 2016; clearly, those people that subscribe annually get a lot out of their membership. In retrospect, a worker who rides into the Loop daily from Pilsen is going to account for a lot more volume over the course of the year than a French couple in town on holiday, but I think if the unit of measurement was an individual rider instead of a single ride, the results might be reversed. 
+
+###Demographics
+
+Divvy also provides anonymized demographic data for subscribers. We can display trips by age and gender like so:
+
+```{r,echo = T}
+
+#=============
+#Rides by Age and Gender
+#=============
+
+#Dataframe
+age_gender <- trips %>%
+  filter(user_type=="Subscriber",!is.na(gender),
+         birth_year>=1916) %>% 
+  mutate(age = 2016 - birth_year) %>% 
+  select(age,gender,trip_id) %>%
+  group_by(age,gender) %>%
+  summarize(trips = n_distinct(trip_id))
+  
+#Plot
+plot_age_gender <- ggplot(age_gender,aes(age,trips,group = gender,
+                      fill = gender)) +
+  geom_bar(stat = "identity") +
+  scale_x_continuous(breaks = seq(0,100,10)) +
+  scale_y_comma(limits = c(0, NA)) +
+  labs(title = "Subscriber Trips by Age and Gender",
+       x = "Age",y = "Trips",
+       caption = "Data: Divvy Bikes") +
+  scale_fill_ipsum(name = "Gender",position = "bottom") +
+  facet_wrap(~ gender,ncol = 1) +
+  theme_ipsum(base_size = 12,grid = "Y") +
+  theme(legend.position = "bottom")
+
+```
+
+
+
+```{r,echo = F,fig.height=12}
+
+plot_age_gender
+
+```
+
+Among subscribers, males account for many more Divvy trips than females - almost `r age_gender %>% ungroup() %>%  group_by(gender) %>% summarize(trips = sum(trips,na.rm = T)) %>% mutate(perc = percent(round(.$trips/sum(.$trips),2))) %>% filter(gender=="Male") %>% pull(3)`. Younger females account for a higher percentage of female rides (69% made by women 35 or younger) relative to young males (60%). This is particularly interesting given that older women are often much healthier than their male counterparts. 
+
+##Trip Characteristics
+The last thing I wanted to look into was the 30th Minute of Doom (TM), which refers to the way Divvy prices are structured; regardless of whether someone has an annual membership or a 24-hour pass, they get unlimited 30-minute rides. Anything over that, however, incurs an extra fee (usually a couple of bucks) that escalates with every extra half-hour.
+
+Now, that doesn't sound like a lot financially, but I was aware of it at all times, and I definitely felt a twinge of panic in the morning rush when I would pull in to work only to see that my go-to dock was full. That got me to thinking - just how often do riders breach the 30 minute limit? The code chunk below organizes Divvy rides by trip duration in minutes:
+
+```{r,echo = T}
+
+#=============
+#Trip Duration
+#=============
+
+#Dataframe
+trips_time <- trips %>%
+  mutate(trip_min = round(trip_duration/60,0)) %>% 
+  select(trip_min,trip_id) %>%
+  group_by(trip_min) %>%
+  summarize(trips = n_distinct(trip_id))
+
+#Plot
+plot_trips_time <- ggplot(trips_time,aes(trip_min,trips)) +
+  geom_bar(stat = "identity",fill = "#75b8d1") +
+  geom_vline(xintercept = 30.5,size = 1,color = "red") +
+  scale_x_continuous(limits = c(0, 60),
+                     breaks = seq(0,60,10)) +
+  scale_y_comma(limits = c(0, NA)) +
+  labs(title = "Trip Duration",
+       subtitle = "Trips Under 1 Hour (97% of All Trips)",
+       x = "Trip Duration (Minutes)",y = "Trips",
+       caption = "Data: Divvy Bikes") +
+  theme_ipsum(base_size = 12,grid = "Y")
+
+```
+
+
+
+```{r,echo=F}
+
+#Plot
+plot_trips_time
+
+```
+
+Almost all trips are completed in under an hour. Graphically, I thought it would be useful to focus on rides that lasted 60 minutes or less. The median Divvy trip in 2016 was `r trips %>% mutate(trip_min = round(trip_duration/60,0)) %>% summarise(median(trip_min,na.rm=T))` minutes, an indicator that Divvy is being used for quick trips and not longer commutes - addressing the "last mile" problem that many transit advocates would argue bike-shares are tailor-made for. 
+
+Anyway, back to the 30 minute limit. It surprises me that the volume by trip duration decreases so steadily, almost exponentially, starting at around the 20 minute mark and going right through 30. I expected that riders would alter their behavior to make sure they get their ride in under 30 minutes, even if it meant docking at a halfway point to restart the clock. This would give the appearance of a kind of discontinuity around the half-hour point, but that is not the case. Maybe the price is just too low for people to worry about their exact trip length?    
+
+Lastly, I want to confirm a suspicion of mine about Divvy rides that *do* exceed 30 minutes (which might also explain the above phenomenon). The table below looks at trips that incurred the extra cost by user type: 
+
+```{r,echo = T}
+
+#=============
+#Trip Duration - 30 Mins or Less
+#=============
+
+#Dataframe
+trips_30 <- trips %>%
+  mutate(trip_30_flag = ifelse(round(trip_duration/60,0)<31,
+                               "Yes","No")) %>%
+  group_by(user_type,trip_30_flag) %>%
+  summarize(Trips = n_distinct(trip_id)) %>%
+  ungroup() %>%
+  spread(trip_30_flag,Trips,fill = 0) %>%
+  mutate("No (%)" = percent(No/rowSums(.[-1])),
+         "Yes (%)" = percent(Yes/rowSums(.[-1]))) %>% 
+  mutate(Total = No+Yes) %>% 
+  select("User Type" = user_type,
+         Yes,`Yes (%)`,No,`No (%)`,Total)
+
+```
+
+
+
+```{r,echo=F}
+
+#Table
+DT::datatable(trips_30,
+              caption = "Trips - 30 Minutes or Less",
+              rownames = F,
+              options = list(dom = "t",
+                columnDefs = list(list(
+                  className = "dt-center",
+                  targets = "_all"))))
+
+```
+
+More than 1 in 4 customer trips end up going longer than 30 minutes, while subscribers breached the half-hour mark on only 2% of their rides in 2016. Maybe the real answer is, then, that the family in from out of town doesn't care if they reach the Field Museum in 25 or 45 minutes.I can't blame them - there's no better place to be than the lakefront in the summertime. 
+
+I know that this is a pretty lengthy first post, but there is just so much to dive into with this data that I didn't even touch upon. My poor laptop would've melted with everything Divvy has available, but I'm sure a look at all the data since 2013 would make for an interesting project. I'd also love to experiment with mapping trips through Google Maps or some other service to get an approximation of the actual routes that are taken, which might reveal how Chicago's bike network is developing, and potentially highlight intersections and streets that should be prioritized for infrastructure upgrades.
+
