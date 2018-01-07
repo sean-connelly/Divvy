@@ -3,9 +3,6 @@ library(tidyverse)
 library(lubridate)
 library(stringr)
 
-user <- Sys.info()[["user"]]
-new_wd <- sprintf("C:/Users/%s/Desktop/Divvy/Data/Raw",user)
-setwd(new_wd)      
 options(scipen = 1000,stringsAsFactors = FALSE)
 
 #=============
@@ -103,7 +100,16 @@ trips <- trips %>%
          to_station_name,
          to_long,
          to_lat)
-  
+
+#=============
+#Remove csvs and zip files
+#=============
+
+list.files(full.names = TRUE) %>%
+  keep(!grepl("Divvy.rmd|Clean Script.r",.)) %>% 
+  file.remove(.) %>% 
+  invisible()
+
 #=============
 #Write clean sets to RDS, remove for file size purposes
 #=============

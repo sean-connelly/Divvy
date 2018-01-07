@@ -1,9 +1,12 @@
 ---
+title: "Divvy Analysis"
+author: "Sean Connelly"
+date: "`r format(Sys.Date(),'%B %d, %Y')`"
 editor_options:
   chunk_output_type: console
 output:
-  html_document: default
-  pdf_document: default
+  html_document:
+    keep_md: true
 ---
 ```{r setup,include = F,echo = F}
 
@@ -15,10 +18,10 @@ library(zoo);library(scales)
 library(viridis);library(leaflet)
 library(mapview);library(DT)
 
-
 user <- Sys.info()[["user"]]
 new_wd <- sprintf("C:/Users/%s/Desktop/Divvy",user)
-setwd(new_wd)     
+setwd(new_wd)
+
 options(scipen = 1000, stringsAsFactors = FALSE)
 
 #=============
@@ -28,8 +31,6 @@ options(scipen = 1000, stringsAsFactors = FALSE)
 source("Clean Script.R")
 
 ```
-
-#Divvy Analysis
 
 Welcome to my inaugural Github post! After many months spent learning the basics of R, I finally feel comfortable posting some code. This space will, hopefully, contain my monthly data-dives, visualizations, modelling exercises, and general musings on data sets that I find interesting. I would appreciate any comments, constructive or otherwise. 
 
@@ -122,7 +123,7 @@ sync(map_from,map_to)
 
 ```
 
-<!--Forgive me for I have sinned - the text below wrapped around the mapview sync no matter what HTML I used, expect for this manual hack to force output on to a new line--> 
+<!--Forgive me for I have sinned - the text below wrapped around the mapview sync no matter what HTML I used, except for this manual hack to force output on to a new line--> 
 <font color="white">.<p>.<p>.<p>.<p>.<p>.<p>.<p>.<p>.
 <p>.<p>.<p>.<p>.<p>.</font> 
 
@@ -350,7 +351,7 @@ plot_age_gender
 Among subscribers, males account for many more Divvy trips than females - almost `r age_gender %>% ungroup() %>%  group_by(gender) %>% summarize(trips = sum(trips,na.rm = T)) %>% mutate(perc = percent(round(.$trips/sum(.$trips),2))) %>% filter(gender=="Male") %>% pull(3)`. Younger females account for a higher percentage of female rides (69% made by women 35 or younger) relative to young males (60%). This is particularly interesting given that older women are often much healthier than their male counterparts. 
 
 ##Trip Characteristics
-The last thing I wanted to look into was the 30th Minute of Doom (TM), which refers to the way Divvy prices are structured; regardless of whether someone has an annual membership or a 24-hour pass, they get unlimited 30-minute rides. Anything over that, however, incurs an extra fee (usually a couple of bucks) that escalates with every extra half-hour.
+The last thing I wanted to look into was the 30th Minute of Doom^TM^, which refers to the way Divvy prices are structured; regardless of whether someone has an annual membership or a 24-hour pass, they get unlimited 30-minute rides. Anything over that, however, incurs an extra fee (usually a couple of bucks) that escalates with every extra half-hour.
 
 Now, that doesn't sound like a lot financially, but I was aware of it at all times, and I definitely felt a twinge of panic in the morning rush when I would pull in to work only to see that my go-to dock was full. That got me to thinking - just how often do riders breach the 30 minute limit? The code chunk below organizes Divvy rides by trip duration in minutes:
 
@@ -433,7 +434,7 @@ DT::datatable(trips_30,
                   targets = "_all"))))
 
 ```
-
+<p>
 More than 1 in 4 customer trips end up going longer than 30 minutes, while subscribers breached the half-hour mark on only 2% of their rides in 2016. Maybe the real answer is, then, that the family in from out of town doesn't care if they reach the Field Museum in 25 or 45 minutes.I can't blame them - there's no better place to be than the lakefront in the summertime. 
 
 I know that this is a pretty lengthy first post, but there is just so much to dive into with this data that I didn't even touch upon. My poor laptop would've melted with everything Divvy has available, but I'm sure a look at all the data since 2013 would make for an interesting project. I'd also love to experiment with mapping trips through Google Maps or some other service to get an approximation of the actual routes that are taken, which might reveal how Chicago's bike network is developing, and potentially highlight intersections and streets that should be prioritized for infrastructure upgrades.
