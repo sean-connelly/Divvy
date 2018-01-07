@@ -2,11 +2,10 @@
 title: "Divvy Analysis"
 author: "Sean Connelly"
 date: "`r format(Sys.Date(),'%B %d, %Y')`"
+output: github_document
+always_allow_html: yes
 editor_options:
   chunk_output_type: console
-output:
-  html_document:
-    keep_md: true
 ---
 ```{r setup,include = F,echo = F}
 
@@ -36,7 +35,7 @@ Welcome to my inaugural Github post! After many months spent learning the basics
 
 With introductions out of the way, let's dive into our first data set, generously provided by Divvy, the Chicago bike-share program - you can find more information [here](https://www.divvybikes.com/system-data). For the purposes of this analysis, I examine the `r comma(n_distinct(trips$trip_id))` Divvy trips made in 2016. Here is what the tidied data frame looks like:
 
-```{r}
+```{r,screenshot.opts = list(cliprect = c(0, 0, 1000, 400)),dev = "png"}
 
 DT::datatable(head(trips,5),rownames= F,options = list(dom = "t",scrollX = T))
 
@@ -116,16 +115,17 @@ map_to <- leaflet() %>%
 <p>
 Once we have made the maps for both originating and terminating stations, we can plot them together like so:
 
-```{r}
+```{r,screenshot.force = TRUE}
 
 #Map together
-sync(map_from,map_to)
+map_from
+map_to
 
 ```
 
-<!--Forgive me for I have sinned - the text below wrapped around the mapview sync no matter what HTML I used, except for this manual hack to force output on to a new line--> 
+<!--Forgive me for I have sinned - the text below wrapped around the mapview sync no matter what HTML I used, except for this manual hack to force output on to a new line 
 <font color="white">.<p>.<p>.<p>.<p>.<p>.<p>.<p>.<p>.
-<p>.<p>.<p>.<p>.<p>.</font> 
+<p>.<p>.<p>.<p>.<p>.</font>-->
 
 A couple of things stand out immediately. First, regardless of how trips are tabulated, there is a clear core-periphery pattern. Most trips start or end in the Loop or River North, with Old Town and the West Loop close behind. Second, while Divvy volume is higher in the historically white, rich neighborhoods of the Near North Side, the bike-share network is laid out in a more (spatially) equitable fashion than my cold cynical heart presumed; of course, this only speaks to Divvy station allocation, and not the company's responsiveness to customers on the South Side, nor the presence of supporting infrastructure like protected bike lanes.
 
@@ -422,7 +422,7 @@ trips_30 <- trips %>%
 
 
 
-```{r,echo=F}
+```{r,echo=F,screenshot.opts = list(cliprect = c(0, 0, 1000, 200)),dev = "png"}
 
 #Table
 DT::datatable(trips_30,
